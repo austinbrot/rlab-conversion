@@ -24,14 +24,26 @@ def handle_args():
     parser.add_argument(
         "--behavior-file",
         type=Path,
-        required=False,
+        required=True,
         help="Path to the behavior file",
+    )
+    parser.add_argument(
+        "--events-file",
+        type=Path,
+        required=False,
+        help="Path to the events file",
     )
     parser.add_argument(
         "--metadata-file",
         type=Path,
         required=False,
         help="Path to the metadata file",
+    )
+    parser.add_argument(
+        "--sort-dir",
+        type=Path,
+        required=False,
+        help="Path to the sorting folder",
     )
     parser.add_argument(
         "--overwrite",
@@ -42,44 +54,63 @@ def handle_args():
 
 
 def main():
+    #######################
+    # Handle arguments
+    #######################
     args = handle_args()
     session_dir = args.session_dir
 
-    if not session_dir.exists():
+    if not session_dir.exists() or not session_dir.is_dir():
         raise FileNotFoundError(f"Session directory not found: {str(session_dir)}")
-
-    nwbfile = make_rlab_nwbfile(session_dir)
-
-    behavior_file = (
-        args.behavior_file
-        if args.behavior_file is not None
-        else session_dir / "raw" / "Events.csv"
-    )
 
     metadata_file = (
         args.metadata_file
         if args.metadata_file is not None
         else session_dir / "metadata.yml"
     )
+    if not metadata_file.exists() or not metadata_file.is_file():
+        raise FileNotFoundError(f"Metadata file not found: {str(metadata_file)}")
 
     with metadata_file.open("r") as stream:
         metadata = yaml.safe_load(stream)
 
+    events_file = (
+        args.events_file
+        if args.events_file is not None
+        else session_dir / "raw" / "events.csv"
+    )
+    if not events_file.exists() or not events_file.is_file():
+        raise FileNotFoundError(f"Events file not found: {str(events_file)}")
+    
+    sort_dir = (
+        args.sort_dir
+        if args.sort_dir is not None
+        else session_dir / "sort" / "final"
+    )
+    if not sort_dir.exists() or not sort_dir.is_dir():
+        raise FileNotFoundError(f"Sorting directory not found: {str(sort_dir)}")
+
+
+    #######################
+    # Create NWB file
+    #######################
+    nwbfile = make_rlab_nwbfile(session_dir)
+
     behavior_interface = FaceTraitBehaviorConverter(
-        events_file=session_dir / "raw" / "Events.csv",
-        behavior_file=behavior_file,
+        events_file=events_file,
+        behavior_file=args.behavior_file,
         metadata_file=metadata_file,
     )
     behavior_interface.add_to_nwbfile(nwbfile)
 
     sorting_interface = OsortSortingInterface(
-        sort_folder=session_dir / "sort" / "final", metadata_file=metadata_file
+        sort_folder=sort_dir, metadata_file=metadata_file
     )
     sorting_interface.add_to_nwbfile(nwbfile)
 
     nwbfile_path = (
         session_dir
-        / f"sub-{metadata['subject_id']}_ses-{metadata['session_id']}_task-faceTraitRating.nwb"
+        / f"sub-{metadata['subject_id']}_ses-{metadata['session_id']}_task-faceTraitRating_ieeg.nwb"
     )
     if nwbfile_path.exists() and not args.overwrite:
         raise FileExistsError(f"NWB file already exists: {nwbfile_path}")
